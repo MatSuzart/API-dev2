@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Iluminate\Sopport\Facades\Auth;
 use App\User;
+use App\UserAppointment;
+use App\UserFavorite;
 use App\Barber;
 use App\BarberPhotos;
 use App\BarberServices;
@@ -108,6 +110,12 @@ class BarberController extends Controller
             $lng = $resquest->input('lang');
             $city = $request->input('city');
 
+            $offset = $request->input('offset');
+
+            if(!$offset){
+                $offset = 0;
+
+            }
 
             if(!empty($city)){
                 $res = $this->search($city);
@@ -132,7 +140,10 @@ class BarberController extends Controller
             $barbers = Barber::select(Barber::raw('*, SQRT(
                 POW(69.1 * (latitude - '.$lat.'),2) +
                 POW(69.1 * ('.$lng.' - longitude) * COS(latitude / 57.3, 2)) AS distance'))
-                ->havingRaw('distance <?', [10])->orderBy('distance', 'ASC')->get();
+                ->havingRaw('distance <?', [10])->orderBy('distance', 'ASC')
+                ->offset($offset)
+                ->limit(5)
+                ->get();
 
 
             foreach($barbers as $bkey =>$bvalue){
@@ -141,6 +152,108 @@ class BarberController extends Controller
 
             $array['data']= $$barbers;
             $array['loc'] = 'SP';
+
+            return $array;
+        }
+
+        public function one($id){
+            $array = ['error'=>''];
+
+                $barber = Barber::find($id);
+                if($barber){
+                    $barber['avatar']= url('media/avatars/'.$barber['avatar']);
+                    $barber['favorited'] = false;
+                    $barber['photos'] = [];
+                    $barber['services'] = [];
+                    $barber['testimonials'] = [];
+                    $barber['available'] = [];
+
+                    $cFavorite = UserFavorite::where('id_user',$this->$loggedUser->id)
+                    ->where('id_barber',$barber->id)
+                    ->count();
+
+                    if($cFavorite >0){
+                        $barber['favorited'] = true;
+                    }
+
+                    $barber['photos'] = BarberPhotos::select(['id','url'])->where('id_barber', $barber->id)->get();
+                    foreach($barber['photos'] as $bpkey=> $bpvalue){
+                        $barber['photos'][$bpkey]['url'] = url('media/uploads/'.$barber['photos'][$bpkey]['url']);
+                    }
+
+                    $barber['services'] = BarberServices::select(['id','name','price'])->where('id_barber',$barbe->$id)->get();
+
+                    $barber['testimonials'] = BarberTestimonial::select(['id','name','rate','body'])
+                    ->where('id_barber',$barber->id)->get();
+
+                    $availability = [];
+
+
+                    //DISPONIBILIZADE
+                    $avails = BarberAvailability::where('id_barber', $barber->id)->get();
+                    $availWeekdays = [];
+                    foreach($avails as $item){
+                        $availWeekdays[$item['weekday']] = explode(',',$item['hours']);
+                    }
+
+
+                    //AGENDAMENTO P 20DIAS
+                    $appointments = [];
+                    $appQuery = UserAppointment::where('id_barber', $barber->id)
+
+                    ->whereBetween('ap_datatime',[
+                        date('Y-m-d').'00:00:00',
+                        date('Y-m-d', strtotime('+20 days')).'23:59:59'
+                    ])
+                    ->get();
+
+                        foreach($appQuery as $appItem){
+                            $appointments[] = $appItem['ap_datetime'];
+                        }
+
+                     //GERAR LISTA DE DISP
+                    for($q=0;$q<20; $q++){
+                        $timeItem = strtotime('+'.$q.'days');
+                        $weekday = date('w', $timeItem);
+
+                        if(in_array($weekday, array_keys($availWeekdays))){
+
+
+                            $hours = [];
+
+                            $dayItem = date('Y-m-d', $timeItem);
+
+                            foreach($availWeekdays[$weekday] as $hourItem){
+                                $dayFormated = $dayItem.' '.$hourItem.':00';
+
+
+                                if(in_array($dayFormated, $appointments)){
+                                    $hours[] = $hourItem;
+                                }
+
+                            }
+
+                            if(count($hours)>0){
+                                $availability[] = [
+                                    'date'=> $dayItem,
+                                    'hours'=>$hours
+                                ];
+                            }
+
+                        }
+
+                    }
+
+
+
+                    $barber['available'] = $availability;
+
+                    $array['data'] = $barber;
+
+                }else {
+                    $array['error'] = 'BARBEIRO NÃO EXISTE';
+                    return $array;
+                }
 
             return $array;
         }
