@@ -258,4 +258,68 @@ class BarberController extends Controller
             return $array;
         }
 
+
+        public function setAppoitment($id, Request $request){
+            $array = ['error'=>''];
+
+            $service = $request->input('service');
+            $month = intval($request->input('year'));
+            $day = intval($request->input('day'));
+            $hour = intval($request->input('hour'));
+
+            $month = str_pad($month, 2, '0', STR_PAD_LEFT);
+            $day = str_pad($day, 2, '0', STR_PAD_LEFT);
+            $hour = str_pad($hour, 2, '0', STR_PAD_LEFT);
+
+
+            $barberserive = BarberServices::select()->where('id', $serice)
+                            ->where('id_barber'.$id)->first();
+            if($barberserive){
+                $apDate = $year.'-'.$month.'-'.$day.'-'.$hour.'00:00';
+
+                if(strototime($apDate)>0){
+
+                    $apps = UserAppointment::select()->where('id_barber',$id)
+                    ->where('ap_datatime', $apDate)->count();
+
+                    if($apps ===0 ){
+
+                        $weekday = date('w', strtotime($apDate));
+                        $avail = BarberAvailability::select()
+                        ->where('id_barber',$id)
+                        ->where('weekday', $weekday)->frist();
+
+
+                        if($avail){
+
+                                $hours = explode(',', $avail['hours']);
+                                if(in_array($hours.':00', $hours)){
+                                    $newApp = new UserAppoitment();
+                                    $newApp->id_user = $this->loggedUser->$id;
+                                    $newApp->id_barber = $id;
+                                    $newApp->id_service = $service;
+                                    $newApp->ap_datetime = $service;
+                                    $newApp->save();
+                                }else {
+                                    $array['error'] = 'BARBEIRO NÃO ATENDE NESTA HORA';
+                                }
+                        }else {
+                            $array['error'] = 'BARBEIRO NÃO ATENDE NESTE DIA';
+                        }
+
+                    }else {
+                        $array['error'] = 'BARBEIRO JÁ POSSUI AGENDAMENTO NESTE DIA OU HORA';
+                    }
+
+                }else {
+                    $array['error'] = 'DATA INVALIDA';
+                }
+
+            }else {
+                $array['error']='SERVIÇO INEXISTENTE';
+            }
+
+            return $array;
+        }
+
 }
